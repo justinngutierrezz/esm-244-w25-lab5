@@ -1,7 +1,14 @@
 ---
-title: 'ESM 244 Lab 5 Key: Clustering'
+title: 'ESM 244 Lab 5: Clustering'
+author: 
+  - Justin Gutierrez
+format: 
+  html:
+    code-fold: show
+    embed-resources: true
 execute:
-  eval: false
+  message: false
+  warning: false
 ---
 
 
@@ -73,7 +80,8 @@ temp<-read_tsv(here::here('data','seeds_dataset.txt'),
 
 In your console use `summary(temp)` to examine the structure of the data. Does anything look strange?
 
-
+1. There are -999 in some spots where it should be a null value 
+2. There are 1,2, and 3 in the variety area. 
 
 
 
@@ -105,19 +113,51 @@ I want you to create three exploratory visuals to help you understand the data a
 You can always make more if you want. 
 
 
+Histogram 
+```{r}
+LongKern <- seeds_df|> 
+  pivot_longer(cols="a":"l_g",
+               names_to = "name",
+               values_to = "value")
+
+Hist1<- ggplot(LongKern, aes(x=value))+ 
+  geom_histogram(fill = "navy")+
+  facet_grid(variety ~ name, scales = "free")+
+  theme_bw()
+Hist1
+```
 
 
+Scatter 1
+```{r}
+Scat1 <- ggplot(seeds_df,aes(x=a, y = asym, color = variety))+ 
+  geom_point()+ 
+  labs(x="Area", y="Assymetry")+
+  theme_bw()
+Scat1
+```
 
-
-
-
-
+```{r}
+Scat2 <- ggplot(seeds_df,aes(x=l_k, y = w_k, color = variety))+ 
+  geom_point()+ 
+  labs(x="Length of Kernel", y="Width of Kernel")+
+  theme_bw()
+Scat2
+```
 ## Create a complete, scaled version of the data
 
 Make two separate dataframes where one is the complete cases dataframe and the other is the scaled complete cases. Check out the `scale()` function.
 
 Why would we want two separate dataframes instead of doing it one pipe? Why should we scale the data before going to kmeans-clustering?
 
+```{r}
+seeds_complete <- seeds_df |>
+  drop_na()
+
+seeds_scale <- seeds_complete |>
+  select(-variety)|> #drop variety column 
+  scale()
+```
 
 
 
@@ -126,13 +166,10 @@ Why would we want two separate dataframes instead of doing it one pipe? Why shou
 First let's make a 'knee' plot to see the performance of kmeans with different number of clusters. Describe what each of the arguments do in the following code chunk. Interpret the results of the graph by making a figure caption in the code chunk.
 
 ```{r}
-
+#| fig-cap: Optional Number of Clusters for Kernels. After adding the 3rd cluster there is less of a drop off so we will use 3 groups for our kmeans cluster. 
 fviz_nbclust(seeds_scale, FUNcluster = kmeans, method = 'wss', k.max = 10)
 
 ```
-
-
-
 
 Now let's have R recommend the number of clusters.
 
@@ -142,13 +179,7 @@ number_est <- NbClust(seeds_scale, min.nc = 2, max.nc = 10, method = "kmeans")
 
 
 number_est
-
-
 ```
-
-
-
-
 
 ## Run k-means 
 
@@ -157,11 +188,16 @@ The `nbclust` package runs k-means under the hood, but doesn't provide a usuable
 ```{r}
 
 set.seed(10101)
-seeds_km <- kmeans(xxx,yyy,zzz) # kmeans specifying 3 groups to start
+seeds_km <- kmeans(seeds_scale,3,iter.max = 10)# kmeans specifying 3 groups to start
+summary(seeds_km)
 ```
 
 
 Examine the output of the kmeans object. Which column contains the classfiication? Join the cluster labels to the ***non***-scaled data.
+```{r}
+seeds_cl <- data.frame(seeds_complete, 
+                       cluster_no = factor(seeds_km$cluster))
+```
 
 
 
@@ -170,18 +206,28 @@ Now make a ggplot of of area on the x-axis, asymmetric coefficient on the y-axis
 ``` {r}
 ### On your own:
 ### Plot area and asymmetric index, and include cluster number and variety for comparison:
-
-
-
+SeedsScat <- ggplot(seeds_cl,aes(x= a, y = asym, color = cluster_no, shape = variety))+ 
+  geom_point()+ 
+  labs(x="Kernel Area", y="Assymetric Coefficient")+
+  theme_bw()
+SeedsScat
 ```
 
 What do we see from this graph? 
 
+• Most of the observations can be defined by their variety but there is some overlap between Kama and the others. 
+
 
 Can you make a table to show the comparison between the variety and defined clusters?
 
+```{r}
+#| tbl-cap: Contiency table for the groupings of kmeans and the varietals of kernels 
 
-
+seeds_cl|>
+  select(variety,cluster_no)|>
+  table()|>
+  knitr::kable()
+```
 # Part 2. Cluster analysis: hierarchical
 
 In this section, we'll be performing hierarchical cluster analysis (& making dendrograms) in R. From lecture you should understand agglomerative versus divisive clustering, as well as differences in linkages (complete, single, average). 
@@ -200,23 +246,25 @@ Here, we'll read in the WorldBank environmental data (simplified), and keep only
 wb_env <- read_csv(here::here("data","wb_env.csv"))
 
 ```
-
-
-
 Write pseducode for what we will need to do for heirarchal clustering
-
-
+1. slice the top 20 emitters 
+2. drop na's (don't have any in this df)
+3. select only numerics 
+4. scale the data 
+5. calculate distance of scaled data 
+6. run hclust
+7. linkages single or complete
+8. Make dendrograms 
 
 
 ## Wrangle the data
 
 ```{r}
-#| eval: false
+
 
 # Only keep top 20 greenhouse gas emitters (for simplifying visualization here...)
 wb_ghg_20 <- wb_env %>% 
-  
-
+  slice_max(ghg, n=20)
 ```
 
 ## Scale the data
@@ -224,10 +272,10 @@ wb_ghg_20 <- wb_env %>%
 ```{r}
 # Scale the numeric variables (columns 3:7)
 wb_scaled <- wb_ghg_20 %>% 
+  select(-c(name, region))|>
+  scale()
 
-
-rownames(wb_scaled) <- wb_ghg_20$name
-
+rownames(wb_scaled) <- wb_ghg_20$name #allows us to put the names into where the observation # is, not new column
 ```
 
 
@@ -236,7 +284,7 @@ rownames(wb_scaled) <- wb_ghg_20$name
 Use the `stats::dist()` function to find the Euclidean distance in multivariate space between the different observations (countries):
 
 ```{r}
-
+euc_distance <- dist(wb_scaled, method = "euclidean")
 ```
 
 
@@ -257,6 +305,7 @@ p_complete<-ggdendrogram(hc_complete,
              rotate = TRUE) +
   theme_minimal() +
   labs(x = "Country")
+p_complete
 
 ```
 
@@ -265,8 +314,16 @@ p_complete<-ggdendrogram(hc_complete,
 Let's update the linkage to single linkage (recall from lecture: this means that clusters are merged by the *smallest* distance between observations in separate clusters):
 
 ```{r}
-
 # Make single cluster here and plot it
+hc_single <- hclust(euc_distance, method = "single" )
+
+# Plot it
+p_single<-ggdendrogram(hc_single, 
+             rotate = TRUE) +
+  theme_minimal() +
+  labs(x = "Country")
+p_single
+
 
 ```
 
@@ -275,13 +332,9 @@ Let's update the linkage to single linkage (recall from lecture: this means that
 Use patchwork to compare the two outputs and add a descriptive figure caption to the joined plot.
 
 ```{r}
-
+patch_p <- p_single + p_complete
+patch_p
 ```
-
-
-
-
-
 # Extras:
 
 ### Pruning the dendrogram
